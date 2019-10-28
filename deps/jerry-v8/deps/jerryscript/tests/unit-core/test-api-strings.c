@@ -34,6 +34,127 @@ strict_equals (jerry_value_t a, /**< the first string to compare */
   return is_strict_equal;
 } /* strict_equals */
 
+static jerry_value_t
+call_function (const char* args_str_p, const char* src_p, jerry_value_t args[], jerry_size_t argc)
+{
+    jerry_value_t function_value = jerry_parse_function (NULL, 0,
+                                                         (const jerry_char_t *) args_str_p, strlen (args_str_p),
+                                                         (const jerry_char_t *) src_p, strlen (src_p),
+                                                         JERRY_PARSE_NO_OPTS);
+    TEST_ASSERT (!jerry_value_is_error (function_value));
+
+    jerry_value_t result = jerry_call_function (function_value, jerry_create_undefined (), args, argc);
+    TEST_ASSERT (!jerry_value_is_error (result));
+    jerry_release_value (function_value);
+
+    return result;
+}
+
+static void
+string_compare (jerry_value_t string_value, const char *expected_string)
+{
+  TEST_ASSERT (jerry_value_is_string (string_value));
+  jerry_size_t str_size = jerry_get_string_size (string_value);
+  JERRY_VLA (char, str_p, str_size + 20);
+  memset (str_p, 0xFF, str_size + 20);
+
+  jerry_size_t copied = jerry_string_to_char_buffer (string_value, (jerry_char_t *) str_p, str_size);
+  TEST_ASSERT (copied == str_size);
+
+  TEST_ASSERT (memcmp (str_p, expected_string, strlen (expected_string)) == 0);
+  TEST_ASSERT (str_p[str_size] == (char)0xFF);
+}
+
+static void
+test_external_strings_no_free (void)
+{
+  static char demo_str[] = "Hello";
+
+  jerry_value_t str_ext_a = jerry_create_string_external ((const jerry_char_t *) demo_str, (jerry_size_t) strlen (demo_str), NULL);
+
+  string_compare (str_ext_a, demo_str);
+  {
+    jerry_value_t test_hello_result = call_function ("arg", "return arg == 'Hello';", &str_ext_a, 1);
+    TEST_ASSERT (jerry_value_is_boolean (test_hello_result));
+
+    bool is_equal = jerry_get_boolean_value (test_hello_result);
+    TEST_ASSERT (is_equal);
+
+    jerry_release_value (test_hello_result);
+  }
+
+  {
+    jerry_value_t test_concat_result = call_function ("arg", "return arg + 'Hello';", &str_ext_a, 1);
+    string_compare (test_concat_result, "HelloHello");
+    jerry_release_value (test_concat_result);
+  }
+
+  {
+    jerry_value_t test_trim_result = call_function ("arg", "return arg.trim();", &str_ext_a, 1);
+    string_compare (test_trim_result, "Hello");
+
+    jerry_release_value (test_trim_result);
+  }
+
+  jerry_release_value (str_ext_a);
+
+} /* test_external_strings */
+
+static bool external_free_called;
+
+static void
+external_str_free_cb (void *str_data_p)
+{
+  external_free_called = true;
+  free (str_data_p);
+}
+
+static void
+test_external_strings_free (void)
+{
+  external_free_called = false;
+
+  const size_t data_size = 50 * sizeof (char);
+  char *demo_str = (char *) malloc (data_size);
+
+  memset (demo_str, 0xFF, data_size);
+  strncpy (demo_str, "Hello", 5 + 1);
+
+  jerry_value_t str_ext_a = jerry_create_string_external ((const jerry_char_t *) demo_str,
+                                                          (jerry_size_t) strlen (demo_str),
+                                                          external_str_free_cb);
+  string_compare (str_ext_a, demo_str);
+  {
+    jerry_value_t test_hello_result = call_function ("arg", "return arg == 'Hello';", &str_ext_a, 1);
+    TEST_ASSERT (jerry_value_is_boolean (test_hello_result));
+
+    bool is_equal = jerry_get_boolean_value (test_hello_result);
+    TEST_ASSERT (is_equal);
+
+    jerry_release_value (test_hello_result);
+  }
+
+  {
+    jerry_value_t test_concat_result = call_function ("arg", "return arg + 'Hello';", &str_ext_a, 1);
+    string_compare (test_concat_result, "HelloHello");
+    jerry_release_value (test_concat_result);
+  }
+
+  {
+    jerry_value_t test_trim_result = call_function ("arg", "return arg.trim();", &str_ext_a, 1);
+    string_compare (test_trim_result, "Hello");
+
+    jerry_release_value (test_trim_result);
+  }
+
+  jerry_release_value (str_ext_a);
+
+  /* Force the gc to remove the string and call the external free callback. */
+  jerry_gc (JERRY_GC_PRESSURE_HIGH);
+
+  TEST_ASSERT (external_free_called == true);
+} /* test_external_strings */
+
 int
 main (void)
 {
@@ -293,6 +414,9 @@ main (void)
   TEST_ASSERT (!strncmp (supl_substring, "\xed\xa0\x80", sz));
 
   jerry_release_value (args[0]);
+
+  test_external_strings_no_free ();
+  test_external_strings_free ();
 
   jerry_cleanup ();
 

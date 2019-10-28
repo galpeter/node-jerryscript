@@ -1414,6 +1414,8 @@ typedef enum
 
   ECMA_STRING_CONTAINER_MAP_KEY, /**< the ecma-string is a map key string */
 
+  ECMA_STRING_CONTAINER_EXTERNAL_STRING, /**< the string is provided externally, just store the size and pointer to it .*/
+
   ECMA_STRING_CONTAINER__MAX = ECMA_STRING_CONTAINER_MAP_KEY /**< maximum value */
 } ecma_string_container_t;
 
@@ -1540,6 +1542,15 @@ typedef struct
     ecma_value_t value; /**< original key value corresponds to the map key string */
   } u;
 } ecma_extended_string_t;
+
+typedef struct
+{
+  ecma_string_t header;
+  const lit_utf8_byte_t *data_p;
+  lit_utf8_size_t size; /**< size of this string in bytes */
+  lit_utf8_size_t length; /**< length of this string in bytes */
+  ecma_object_native_free_callback_t free_cb;
+} ecma_external_string_t;
 
 /**
  * String builder header

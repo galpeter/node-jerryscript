@@ -1621,6 +1621,18 @@ jerry_create_string_sz_from_utf8 (const jerry_char_t *str_p, /**< pointer to str
   return ecma_make_string_value (ecma_str_p);
 } /* jerry_create_string_sz_from_utf8 */
 
+
+jerry_value_t
+jerry_create_string_external (const jerry_char_t* str_p, jerry_size_t str_size, jerry_object_native_free_callback_t free_cb)
+{
+  jerry_assert_api_available ();
+
+  ecma_string_t *ecma_str_p = ecma_new_external_string_from_utf8 ((lit_utf8_byte_t *) str_p,
+                                                                  (lit_utf8_size_t) str_size,
+                                                                  (ecma_object_native_free_callback_t) free_cb);
+  return ecma_make_string_value (ecma_str_p);
+}
+
 /**
  * Create string from a valid CESU-8 string
  *
